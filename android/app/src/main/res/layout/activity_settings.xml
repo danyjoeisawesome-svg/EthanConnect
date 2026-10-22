@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF000000"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:text="@string/settings"
+        android:textColor="#FFFFFFFF"
+        android:textSize="24sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/paired_with"
+        android:textColor="#B3FFFFFF"
+        android:textSize="16sp" />
+
+    <TextView
+        android:id="@+id/pairedValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:textColor="#FFFFFFFF"
+        android:textSize="18sp" />
+
+    <TextView
+        android:id="@+id/btnPair"
+        style="@style/TopButton"
+        android:layout_marginBottom="16dp"
+        android:text="@string/pair_button_label" />
+
+    <TextView
+        android:id="@+id/btnForget"
+        style="@style/TopButton"
+        android:layout_marginBottom="16dp"
+        android:text="@string/forget_pc" />
+
+    <TextView
+        android:id="@+id/btnTvSettings"
+        style="@style/TopButton"
+        android:layout_marginBottom="16dp"
+        android:text="@string/open_tv_settings" />
+
+    <TextView
+        android:id="@+id/btnStockHome"
+        style="@style/TopButton"
+        android:layout_marginBottom="16dp"
+        android:text="@string/open_stock_home" />
+
+    <TextView
+        android:id="@+id/btnBack"
+        style="@style/TopButton"
+        android:layout_marginBottom="24dp"
+        android:text="@android:string/cancel" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/privacy_note"
+        android:textColor="#80FFFFFF"
+        android:textSize="13sp" />
+</LinearLayout>

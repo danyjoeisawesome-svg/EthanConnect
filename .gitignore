@@ -1,0 +1,16 @@
+# build outputs
+dist/
+build_pyi/
+**/build/
+.gradle/
+__pycache__/
+*.pyc
+
+# secrets - never commit
+*.jks
+*.keystore
+keystore.properties
+local.properties
+
+# one-off helpers / scratch
+pc/patch_phase2.py

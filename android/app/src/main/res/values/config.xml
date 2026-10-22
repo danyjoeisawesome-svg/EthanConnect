@@ -1,0 +1,25 @@
+<resources>
+    <!-- Apps pinned to the dock row, in order. Missing apps are skipped. -->
+    <string-array name="dock_apps" translatable="false">
+    </string-array>
+
+    <!-- Apps never shown as tiles. -->
+    <string-array name="hidden_apps" translatable="false">
+    </string-array>
+
+    <!-- Tiles that open a screen of the app instead of its start screen: "package=action". -->
+    <string-array name="launch_actions" translatable="false">
+    </string-array>
+
+    <!-- A tile's name instead of the app's own: "package=Name". -->
+    <string-array name="app_labels" translatable="false">
+    </string-array>
+
+    <bool name="app_library">false</bool>
+    <integer name="columns">4</integer>
+    <bool name="animations">true</bool>
+    <bool name="advanced_effects">false</bool>
+    <bool name="reduced_motion">false</bool>
+    <bool name="fill_dock">true</bool>
+    <integer name="home_idle_clock_minutes">0</integer>
+</resources>

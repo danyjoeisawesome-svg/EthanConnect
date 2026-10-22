@@ -1,0 +1,10 @@
+<resources>
+    <color name="background">#FF000000</color>
+    <color name="surface">#FF1A1A1A</color>
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#B3FFFFFF</color>
+    <color name="accent">#FF3B82F6</color>
+    <color name="tile_bg">#FF2A2A2A</color>
+    <color name="pill_bg">#FF333333</color>
+    <color name="glass_highlight">#4DFFFFFF</color>
+</resources>

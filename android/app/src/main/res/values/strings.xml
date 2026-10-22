@@ -1,0 +1,31 @@
+<resources>
+    <string name="app_name">EthanConnect</string>
+    <string name="mirror">Second Screen</string>
+    <string name="settings">Settings</string>
+    <string name="inputs">Inputs</string>
+    <string name="app_library">App Library</string>
+    <string name="home_settings">Default home</string>
+    <string name="cant_open">Can\'t open %1$s</string>
+    <string name="reorder">Reorder</string>
+    <string name="connecting">Connecting to %1$s…</string>
+    <string name="mirror_not_paired">Not paired with a PC yet.\nInstall EthanConnect PC, then pair with the PIN it shows.</string>
+    <string name="mirror_unpaired">This TV was removed on the PC. Pair again to continue.</string>
+    <string name="mirror_unreachable">Can\'t reach %1$s. Is EthanConnect PC running? Retrying…</string>
+    <string name="pair_button_label">Pair with PC</string>
+    <string name="pair_title">Pair with PC</string>
+    <string name="pair_hint">On the PC, right-click the EthanConnect tray icon and choose "Pair a TV", then enter the address and PIN it shows.</string>
+    <string name="pair_address_hint">PC address, e.g. 192.168.1.11:8443</string>
+    <string name="pair_pin_hint">6-digit PIN</string>
+    <string name="pair_button">Pair</string>
+    <string name="pair_invalid">Enter the PC address and the 6-digit PIN.</string>
+    <string name="pair_working">Pairing…</string>
+    <string name="pair_ok">Paired</string>
+    <string name="pair_failed">Pairing failed. Check the address and PIN (the PIN expires after 5 minutes).</string>
+    <string name="paired_with">Paired PC</string>
+    <string name="not_paired">Not paired</string>
+    <string name="forget_pc">Forget this PC</string>
+    <string name="open_tv_settings">TV system settings</string>
+    <string name="open_stock_home">Open original TV home</string>
+    <string name="no_inputs">No TV inputs found on this device.</string>
+    <string name="privacy_note">Video and remote keys stay on your local network, encrypted, between this TV and your PC. Nothing is sent to the internet.</string>
+</resources>

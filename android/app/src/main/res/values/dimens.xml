@@ -1,0 +1,10 @@
+<resources>
+    <dimen name="tile_width">180dp</dimen>
+    <dimen name="tile_height">101dp</dimen>
+    <dimen name="tile_icon_size">48dp</dimen>
+    <dimen name="name_label_height">22dp</dimen>
+    <dimen name="grid_padding_top">10dp</dimen>
+    <dimen name="grid_padding_bottom">40dp</dimen>
+    <dimen name="top_bar_height">56dp</dimen>
+    <dimen name="dock_height">120dp</dimen>
+</resources>
