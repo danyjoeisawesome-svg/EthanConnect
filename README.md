@@ -80,7 +80,7 @@ Back the keystore up. Use Play App Signing so Google holds the app signing key a
 - [x] Icon 512, feature graphic 1024x500, TV banner, TV screenshots (`store/play/`)
 - [x] Privacy policy (`docs/privacy.md`), data-safety answers (`store/data-safety.md`), listing text (`store/listing.md`)
 - [ ] Publish the privacy policy at a public URL (GitHub Pages) and paste it into Play Console
-- [ ] Replace screenshot 1 (it shows third-party app logos) and add one real mirror screenshot with neutral content
+- [x] TV screenshots (`store/play/screenshots/`): mirror, pairing, settings, inputs - no third-party logos or personal content
 - [ ] Publish the PC installer under GitHub Releases and link it in the listing; give reviewers the "App access" text from `store/listing.md`
 - [ ] Create the Play Console developer account, complete content rating + data safety + target audience, run an internal test on a real TV, then production
 - [ ] Test on at least one other Android TV (different vendor) - this build has only been run on a Xiaomi Mi TV (Android 9)
