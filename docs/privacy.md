@@ -35,6 +35,10 @@ Connections use TLS with a self-signed certificate created on your PC. The TV re
 
 EthanConnect is not directed at children and collects no personal information from anyone.
 
+## Users in India
+
+EthanConnect is built to be usable in India and processes no personal data on any server of the developer, so there is nothing to disclose, correct or erase on our side. For the purposes of India's Digital Personal Data Protection Act, 2023 and the DPDP Rules, 2025: the developer does not collect or store users' personal data; all pairing data stays on your own TV and PC and can be deleted by you at any time ("Forget" in the TV Settings or the PC tray menu, clearing app data, or uninstalling). If you have a privacy question or complaint, contact the developer through the GitHub issue tracker below and you will receive a reply.
+
 ## Changes and contact
 
 If this policy changes, the new version will be published at this address with an updated date. Questions: open an issue at <https://github.com/danyjoeisawesome-svg/EthanConnect/issues>.
