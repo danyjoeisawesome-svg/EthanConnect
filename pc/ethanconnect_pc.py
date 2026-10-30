@@ -28,13 +28,13 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 APP = "EthanConnect"
-VERSION = "1.0.0"
+VERSION = "1.2.1"
 PORT = 8443
 DISCOVERY_PORT = 8082
 BEACON_MAGIC = "ETHANCONNECT1"
-JPEG_QUALITY = 75
-FRAME_INTERVAL = 1 / 30
-MAX_WIDTH = 1920
+DEFAULT_MAX_WIDTH = 1920
+DEFAULT_JPEG_QUALITY = 90
+DEFAULT_FPS = 30
 PIN_LIFETIME = 300
 PIN_MAX_ATTEMPTS = 5
 DISPLAY_DRIVER_URL = "https://www.amyuni.com/downloads/usbmmidd_v2.zip"
@@ -43,6 +43,36 @@ TASK_NAME = "EthanConnect Virtual Display"
 DATA_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / APP
 PROGRAM_DIR = Path(os.environ.get("PROGRAMDATA", "C:/ProgramData")) / APP
 DRIVER_DIR = PROGRAM_DIR / "usbmmidd_v2"
+SETTINGS_PATH = DATA_DIR / "settings.json"
+
+settings = {"monitor": "auto", "max_width": DEFAULT_MAX_WIDTH,
+            "quality": DEFAULT_JPEG_QUALITY, "fps": DEFAULT_FPS}
+settings_lock = threading.RLock()
+sharing_enabled = threading.Event()
+sharing_enabled.set()
+
+
+def load_settings():
+    try:
+        saved = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        with settings_lock:
+            for key in ("monitor", "max_width", "quality", "fps"):
+                if key in saved:
+                    settings[key] = saved[key]
+    except Exception:
+        pass
+
+
+def save_settings():
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with settings_lock:
+            SETTINGS_PATH.write_text(json.dumps(settings), encoding="utf-8")
+    except Exception as e:
+        log("settings save error:", e)
+
+
+load_settings()
 
 
 def _set_dpi_aware():
@@ -105,6 +135,7 @@ class Pairing:
         self.pin_expires = 0.0
         self.attempts = 0
         self.tokens = {}
+        self.last_seen = {}
         self.path = DATA_DIR / "paired.json"
         try:
             self.tokens = json.loads(self.path.read_text())
@@ -134,10 +165,14 @@ class Pairing:
         man-in-the-middle presenting a different certificate cannot obtain a token."""
         with self.lock:
             if not self.pin or time.time() >= self.pin_expires or self.attempts >= PIN_MAX_ATTEMPTS:
+                log("pair rejected: no active PIN or attempt limit reached; attempts", self.attempts)
                 return None
             self.attempts += 1
             expected = hmac.new(self.pin.encode(), bytes.fromhex(self.fp), hashlib.sha256).hexdigest()
-            if not hmac.compare_digest(expected, str(proof)):
+            matched = hmac.compare_digest(expected, str(proof))
+            log("pair proof received; active PIN; attempt", self.attempts, "proof_match", matched,
+                "certificate", self.fp[:16])
+            if not matched:
                 return None
             token = secrets.token_urlsafe(32)
             self.tokens[token] = {"name": str(tv_name)[:40], "created": int(time.time())}
@@ -159,10 +194,29 @@ class Pairing:
             return token
 
     def valid(self, token):
-        ok = False
-        for t in list(self.tokens):  # constant-time compare against each, no early exit
-            ok |= hmac.compare_digest(t, token or "")
-        return ok
+        with self.lock:
+            matched = None
+            for t in list(self.tokens):  # constant-time compare against each, no early exit
+                if hmac.compare_digest(t, token or ""):
+                    matched = t
+            if matched:
+                self.last_seen[matched] = time.time()
+                return True
+            return False
+
+    def revoke(self, token):
+        with self.lock:
+            if token not in self.tokens:
+                return False
+            del self.tokens[token]
+            self.last_seen.pop(token, None)
+            self._save()
+            return True
+
+    def devices(self):
+        with self.lock:
+            return [(token, dict(info), self.last_seen.get(token, 0))
+                    for token, info in self.tokens.items()]
 
     def forget_all(self):
         with self.lock:
@@ -175,7 +229,6 @@ class Pairing:
 current_frame = None
 frame_lock = threading.Lock()
 monitor_info = {"left": 0, "top": 0, "width": 1920, "height": 1080}
-settings = {"monitor": "auto"}  # "auto" = last (virtual/extended) display, "primary"
 
 
 class CursorInfo(ctypes.Structure):
@@ -230,23 +283,27 @@ def capture_loop():
     from PIL import Image
     global current_frame
     while True:
+        if not sharing_enabled.wait(timeout=0.5):
+            continue
         _rebuild.clear()
         count = monitor_count()
         try:
             with mss() as sct:
                 monitor = pick_monitor(sct)
-                while monitor_count() == count and not _rebuild.is_set():
+                while sharing_enabled.is_set() and monitor_count() == count and not _rebuild.is_set():
                     start = time.time()
                     img = sct.grab(monitor)
                     pil = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX")
                     draw_cursor(pil, monitor)
-                    if pil.width > MAX_WIDTH:
-                        pil = pil.resize((MAX_WIDTH, pil.height * MAX_WIDTH // pil.width), Image.BILINEAR)
+                    max_width = int(settings.get("max_width", DEFAULT_MAX_WIDTH))
+                    if pil.width > max_width:
+                        pil = pil.resize((max_width, pil.height * max_width // pil.width), Image.BILINEAR)
                     buf = io.BytesIO()
-                    pil.save(buf, format="JPEG", quality=JPEG_QUALITY)
+                    pil.save(buf, format="JPEG", quality=int(settings.get("quality", DEFAULT_JPEG_QUALITY)))
                     with frame_lock:
                         current_frame = buf.getvalue()
-                    time.sleep(max(0, FRAME_INTERVAL - (time.time() - start)))
+                    frame_interval = 1 / max(1, int(settings.get("fps", DEFAULT_FPS)))
+                    time.sleep(max(0, frame_interval - (time.time() - start)))
         except Exception as e:
             log("capture error:", e)
             time.sleep(1)
@@ -385,6 +442,7 @@ def handle_key(keycode, down):
 class App:
     pairing = None
     fingerprint = ""
+    server = None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -408,10 +466,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def _auth(self):
         token = parse_qs(urlparse(self.path).query).get("t", [""])[0]
+        if not sharing_enabled.is_set():
+            self._reply(503, b"sharing paused")
+            return None
         if App.pairing.valid(token):
-            return True
+            return token
         self._reply(401, b"unauthorized")
-        return False
+        return None
 
     def _json_body(self):
         n = min(int(self.headers.get("Content-Length", 0)), 4096)
@@ -425,8 +486,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._reply(200, json.dumps({"name": socket.gethostname(), "width": m["width"],
                                              "height": m["height"]}).encode(), "application/json")
         elif path == "/stream":
-            if self._auth():
-                self._stream()
+            token = self._auth()
+            if token:
+                self._stream(token)
         elif path in ("/remote", "/view"):
             from web_pages import REMOTE_HTML, VIEW_HTML
             self._reply(200, (REMOTE_HTML if path == "/remote" else VIEW_HTML).encode(), "text/html; charset=utf-8")
@@ -461,7 +523,7 @@ class Handler(BaseHTTPRequestHandler):
             log("request error:", e)
             self._reply(400, b"bad request")
 
-    def _stream(self):
+    def _stream(self, token):
         self.send_response(200)
         self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
         self.send_header("Cache-Control", "no-cache")
@@ -469,8 +531,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.close_connection = True
         last = None
+        next_auth_check = 0.0
         try:
-            while True:
+            while sharing_enabled.is_set():
+                now = time.monotonic()
+                if now >= next_auth_check:
+                    if not App.pairing.valid(token):
+                        log("stream closed: paired TV disconnected")
+                        break
+                    next_auth_check = now + 1.0
                 with frame_lock:
                     frame = current_frame
                 if frame is None or frame is last:
@@ -516,6 +585,9 @@ def beacon_loop():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     while True:
+        if not sharing_enabled.is_set():
+            time.sleep(1)
+            continue
         try:
             ip = local_ip()
             msg = f"{BEACON_MAGIC}|{ip}|{PORT}|{App.fingerprint[:16]}|{socket.gethostname()}".encode()
@@ -534,6 +606,7 @@ def start_server():
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     ctx.load_cert_chain(str(cert), str(key))
     server = TLSServer(("0.0.0.0", PORT), Handler, ctx)
+    App.server = server
     for fn in (server.serve_forever, capture_loop, beacon_loop):
         threading.Thread(target=fn, daemon=True).start()
     log("server started on", PORT, "fingerprint", fp[:16])
@@ -653,25 +726,391 @@ def show_pin_window():
     threading.Thread(target=run, daemon=True).start()
 
 
+def resource_path(name):
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base / name
+
+
+class ControlCenter:
+    """Desktop dashboard for sharing state, paired TVs, pairing, monitor and image quality."""
+
+    RESOLUTIONS = {
+        "HD 720p": 1280,
+        "Full HD 1080p": 1920,
+        "QHD 1440p": 2560,
+        "4K 2160p": 3840,
+    }
+
+    def __init__(self, hidden=False):
+        import tkinter as tk
+        from tkinter import ttk
+
+        self.tk = tk
+        self.ttk = ttk
+        self.root = tk.Tk()
+        self.root.title(f"{APP} Control Center")
+        self.root.geometry("820x720")
+        self.root.minsize(760, 660)
+        self.root.configure(bg="#0b1020")
+        self.root.protocol("WM_DELETE_WINDOW", self.hide_window)
+        self.tray_icon = None
+        self._pin_dialog = None
+        self._pin_after = None
+        self._build_styles()
+        self._build_widgets()
+        try:
+            self.root.iconbitmap(str(resource_path("ethanconnect.ico")))
+        except Exception:
+            pass
+        if hidden:
+            self.root.withdraw()
+        else:
+            self.root.after(150, self.show_window)
+        self.root.after(400, self.refresh)
+
+    def _build_styles(self):
+        ttk = self.ttk
+        style = ttk.Style(self.root)
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+        style.configure("TFrame", background="#0b1020")
+        style.configure("Card.TFrame", background="#151d31")
+        style.configure("TLabel", background="#0b1020", foreground="#edf2ff", font=("Segoe UI", 10))
+        style.configure("Card.TLabel", background="#151d31", foreground="#edf2ff", font=("Segoe UI", 10))
+        style.configure("Title.TLabel", background="#0b1020", foreground="#ffffff", font=("Segoe UI", 23, "bold"))
+        style.configure("Sub.TLabel", background="#0b1020", foreground="#aab6ce", font=("Segoe UI", 10))
+        style.configure("CardTitle.TLabel", background="#151d31", foreground="#ffffff", font=("Segoe UI", 12, "bold"))
+        style.configure("Accent.TButton", font=("Segoe UI", 10, "bold"), padding=(15, 9),
+                        background="#7667ef", foreground="#ffffff")
+        style.map("Accent.TButton", background=[("active", "#887bff"), ("disabled", "#41465d")])
+        style.configure("TButton", font=("Segoe UI", 10), padding=(12, 8),
+                        background="#27334b", foreground="#edf2ff")
+        style.map("TButton", background=[("active", "#34435f")])
+        style.configure("TCombobox", padding=6, fieldbackground="#0e1729", background="#27334b",
+                        foreground="#edf2ff", arrowcolor="#edf2ff")
+        style.map("TCombobox", fieldbackground=[("readonly", "#0e1729")], foreground=[("readonly", "#edf2ff")])
+        style.configure("Treeview", background="#0e1729", foreground="#e6ecf8", fieldbackground="#0e1729",
+                        rowheight=30, borderwidth=0, font=("Segoe UI", 10))
+        style.configure("Treeview.Heading", background="#202b40", foreground="#d7e0f1",
+                        font=("Segoe UI", 9, "bold"), padding=7)
+        style.map("Treeview", background=[("selected", "#554dcc")], foreground=[("selected", "#ffffff")])
+
+    def _build_widgets(self):
+        tk, ttk = self.tk, self.ttk
+        outer = ttk.Frame(self.root, padding=(24, 18))
+        outer.pack(fill="both", expand=True)
+
+        header = ttk.Frame(outer)
+        header.pack(fill="x", pady=(0, 16))
+        try:
+            from PIL import Image, ImageTk
+            logo = Image.open(resource_path("ethanconnect.ico")).convert("RGBA")
+            logo.thumbnail((58, 58), Image.Resampling.LANCZOS)
+            self.logo_photo = ImageTk.PhotoImage(logo)
+            tk.Label(header, image=self.logo_photo, bg="#0b1020").pack(side="left", padx=(0, 14))
+        except Exception as e:
+            log("desktop logo unavailable:", e)
+        brand = ttk.Frame(header)
+        brand.pack(side="left", fill="y")
+        ttk.Label(brand, text="EthanConnect", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(brand, text="Wireless second screen control center", style="Sub.TLabel").pack(anchor="w")
+        ttk.Button(header, text="Pair a TV", style="Accent.TButton",
+                   command=self.show_pair_dialog).pack(side="right", anchor="center")
+
+        status = ttk.Frame(outer, style="Card.TFrame", padding=(16, 13))
+        status.pack(fill="x", pady=(0, 14))
+        status_left = ttk.Frame(status, style="Card.TFrame")
+        status_left.pack(side="left", fill="x", expand=True)
+        self.status_label = ttk.Label(status_left, text="Starting…", style="CardTitle.TLabel")
+        self.status_label.pack(anchor="w")
+        self.address_label = ttk.Label(status_left, text="", style="Card.TLabel")
+        self.address_label.pack(anchor="w", pady=(3, 0))
+        status_actions = ttk.Frame(status, style="Card.TFrame")
+        status_actions.pack(side="right", padx=(12, 0))
+        ttk.Button(status_actions, text="Connect TV", style="Accent.TButton",
+                   command=self.connect_tv).pack(side="left", padx=(0, 8))
+        self.share_button = ttk.Button(status_actions, text="Stop sharing", command=self.toggle_sharing)
+        self.share_button.pack(side="left")
+
+        self.note_label = ttk.Label(outer, text="On the TV, open Second Screen to connect. Pair once with the code shown here.",
+                                    style="Sub.TLabel")
+        self.note_label.pack(anchor="w", pady=(0, 12))
+
+        devices = ttk.Frame(outer, style="Card.TFrame", padding=14)
+        devices.pack(fill="both", expand=True, pady=(0, 14))
+        device_header = ttk.Frame(devices, style="Card.TFrame")
+        device_header.pack(fill="x", pady=(0, 8))
+        ttk.Label(device_header, text="Paired TVs and phones", style="CardTitle.TLabel").pack(side="left")
+        self.device_count = ttk.Label(device_header, text="", style="Card.TLabel")
+        self.device_count.pack(side="right")
+
+        table_frame = ttk.Frame(devices, style="Card.TFrame")
+        table_frame.pack(fill="both", expand=True)
+        self.devices = ttk.Treeview(table_frame, columns=("device", "status", "last"), show="headings", height=5)
+        self.devices.heading("device", text="Device")
+        self.devices.heading("status", text="Connection")
+        self.devices.heading("last", text="Last activity")
+        self.devices.column("device", width=300, anchor="w")
+        self.devices.column("status", width=165, anchor="w")
+        self.devices.column("last", width=150, anchor="w")
+        self.devices.pack(side="left", fill="both", expand=True)
+        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.devices.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.devices.configure(yscrollcommand=scrollbar.set)
+        actions = ttk.Frame(devices, style="Card.TFrame")
+        actions.pack(fill="x", pady=(10, 0))
+        ttk.Button(actions, text="Show pairing code", command=self.show_pair_dialog).pack(side="left")
+        self.disconnect_button = ttk.Button(actions, text="Disconnect selected TV", command=self.disconnect_selected)
+        self.disconnect_button.pack(side="right")
+        self.devices.bind("<<TreeviewSelect>>", lambda _e: self._update_disconnect_state())
+
+        stream = ttk.Frame(outer, style="Card.TFrame", padding=(14, 11))
+        stream.pack(fill="x")
+        ttk.Label(stream, text="Stream quality", style="CardTitle.TLabel").grid(row=0, column=0, sticky="w", padx=(0, 14))
+        ttk.Label(stream, text="Resolution", style="Card.TLabel").grid(row=0, column=1, sticky="w")
+        self.resolution_var = tk.StringVar()
+        self.resolution_combo = ttk.Combobox(stream, textvariable=self.resolution_var,
+                                             values=list(self.RESOLUTIONS), state="readonly", width=17)
+        self.resolution_combo.grid(row=1, column=1, sticky="w", pady=(5, 2))
+        self.resolution_combo.bind("<<ComboboxSelected>>", self._quality_changed)
+        ttk.Label(stream, text="JPEG detail", style="Card.TLabel").grid(row=0, column=2, sticky="w", padx=(20, 0))
+        self.quality_var = tk.IntVar(value=int(settings.get("quality", DEFAULT_JPEG_QUALITY)))
+        self.quality_scale = tk.Scale(stream, from_=60, to=95, orient="horizontal", showvalue=True,
+                                      variable=self.quality_var, command=self._quality_changed,
+                                      bg="#151d31", fg="#edf2ff", troughcolor="#33415b",
+                                      highlightthickness=0, activebackground="#63d8c4", length=190)
+        self.quality_scale.grid(row=1, column=2, sticky="ew", padx=(15, 0))
+        ttk.Label(stream, text="Frame rate", style="Card.TLabel").grid(row=0, column=3, sticky="w", padx=(18, 0))
+        self.fps_var = tk.StringVar(value=str(settings.get("fps", DEFAULT_FPS)))
+        self.fps_combo = ttk.Combobox(stream, textvariable=self.fps_var, values=("15", "24", "30", "60"),
+                                      state="readonly", width=6)
+        self.fps_combo.grid(row=1, column=3, sticky="w", pady=(5, 2))
+        self.fps_combo.bind("<<ComboboxSelected>>", self._quality_changed)
+
+        ttk.Label(stream, text="Display source", style="Card.TLabel").grid(row=2, column=0, sticky="w", pady=(12, 0))
+        self.monitor_var = tk.StringVar()
+        self.monitor_combo = ttk.Combobox(stream, textvariable=self.monitor_var,
+                                          values=("Auto / extended display", "Primary display"),
+                                          state="readonly", width=23)
+        self.monitor_combo.grid(row=2, column=1, sticky="w", pady=(12, 0))
+        self.monitor_combo.bind("<<ComboboxSelected>>", self._monitor_changed)
+        self.capture_label = ttk.Label(stream, text="", style="Card.TLabel")
+        self.capture_label.grid(row=2, column=2, columnspan=2, sticky="e", pady=(12, 0))
+        stream.columnconfigure(2, weight=1)
+
+        self._set_settings_controls()
+        self._update_disconnect_state()
+
+    def _set_settings_controls(self):
+        width = int(settings.get("max_width", DEFAULT_MAX_WIDTH))
+        closest = min(self.RESOLUTIONS.values(), key=lambda value: abs(value - width))
+        self.resolution_var.set(next(name for name, value in self.RESOLUTIONS.items() if value == closest))
+        self.monitor_var.set("Primary display" if settings.get("monitor") == "primary" else "Auto / extended display")
+
+    def _quality_changed(self, _event=None):
+        label = self.resolution_var.get()
+        settings["max_width"] = self.RESOLUTIONS.get(label, DEFAULT_MAX_WIDTH)
+        settings["quality"] = max(60, min(95, int(self.quality_var.get())))
+        try:
+            settings["fps"] = int(self.fps_var.get())
+        except ValueError:
+            settings["fps"] = DEFAULT_FPS
+        save_settings()
+
+    def _monitor_changed(self, _event=None):
+        settings["monitor"] = "primary" if self.monitor_var.get() == "Primary display" else "auto"
+        save_settings()
+        _rebuild.set()
+
+    def toggle_sharing(self):
+        if sharing_enabled.is_set():
+            sharing_enabled.clear()
+            self.share_button.configure(text="Start sharing")
+        else:
+            sharing_enabled.set()
+            self.share_button.configure(text="Stop sharing")
+        _rebuild.set()
+        self.refresh()
+
+    def connect_tv(self):
+        from tkinter import messagebox
+        if not sharing_enabled.is_set():
+            sharing_enabled.set()
+            _rebuild.set()
+        if not App.pairing.devices():
+            self.show_pair_dialog()
+            return
+        messagebox.showinfo("Connect TV", "Sharing is ready. On the TV, open EthanConnect → Second Screen to connect.\n\nUse Pair a TV only when adding a new device.", parent=self.root)
+        self.refresh()
+
+    def disconnect_selected(self):
+        from tkinter import messagebox
+        selected = self.devices.selection()
+        if not selected:
+            return
+        token = selected[0]
+        values = self.devices.item(token, "values")
+        name = values[0] if values else "this TV"
+        if messagebox.askyesno("Disconnect TV", f"Disconnect {name} now and remove its pairing? It will need a new pairing code to connect again.", parent=self.root):
+            App.pairing.revoke(token)
+            self.refresh()
+
+    def _update_disconnect_state(self):
+        try:
+            self.disconnect_button.configure(state="normal" if self.devices.selection() else "disabled")
+        except Exception:
+            pass
+
+    def refresh(self):
+        if not self.root.winfo_exists():
+            return
+        enabled = sharing_enabled.is_set()
+        self.share_button.configure(text="Stop sharing" if enabled else "Start sharing")
+        self.address_label.configure(text=f"{local_ip()}:{PORT}   ·   {monitor_info['width']} × {monitor_info['height']}")
+        active = []
+        rows = App.pairing.devices() if App.pairing else []
+        now = time.time()
+        for _token, info, last_seen in rows:
+            if last_seen and now - last_seen < 20:
+                active.append(info.get("name", "TV"))
+        if not enabled:
+            status = "Sharing paused"
+        elif active:
+            status = "Connected: " + ", ".join(active)
+        else:
+            status = "Ready — waiting for a TV to connect"
+        self.status_label.configure(text=status)
+        self.device_count.configure(text=f"{len(rows)} paired · {len(active)} connected")
+        self.capture_label.configure(text=f"JPEG {settings.get('quality', DEFAULT_JPEG_QUALITY)}%  ·  {settings.get('fps', DEFAULT_FPS)} FPS")
+        selected = self.devices.selection()
+        for iid in self.devices.get_children():
+            self.devices.delete(iid)
+        for token, info, last_seen in rows:
+            online = bool(last_seen and now - last_seen < 20)
+            if not enabled:
+                state, activity = "Sharing paused", "—"
+            elif online:
+                state, activity = "Connected", "Now"
+            elif last_seen:
+                state = "Paired · waiting"
+                activity = f"{int((now - last_seen) // 60)} min ago" if now - last_seen >= 60 else "Recently"
+            else:
+                state, activity = "Paired · waiting", "Not connected yet"
+            self.devices.insert("", "end", iid=token,
+                                values=(info.get("name", "TV"), state, activity))
+        if selected and self.devices.exists(selected[0]):
+            self.devices.selection_set(selected[0])
+        self._update_disconnect_state()
+        self.root.after(1000, self.refresh)
+
+    def show_window(self):
+        if not self.root.winfo_exists():
+            return
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
+
+    def hide_window(self):
+        self.root.withdraw()
+
+    def request_pair_dialog(self):
+        self.root.after(0, self.show_pair_dialog)
+
+    def show_pair_dialog(self):
+        import tkinter as tk
+        from tkinter import ttk
+        from PIL import ImageTk
+
+        if self._pin_dialog is not None and self._pin_dialog.winfo_exists():
+            self._pin_dialog.lift()
+            return
+        pin = App.pairing.new_pin()
+        dialog = tk.Toplevel(self.root)
+        self._pin_dialog = dialog
+        dialog.title("Pair a TV or phone")
+        dialog.geometry("420x500")
+        dialog.resizable(False, False)
+        dialog.configure(bg="#0b1020")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        try:
+            dialog.iconbitmap(str(resource_path("ethanconnect.ico")))
+        except Exception:
+            pass
+        ttk.Label(dialog, text="Pair with EthanConnect", style="Title.TLabel").pack(pady=(18, 5))
+        ttk.Label(dialog, text="On your TV, open Second Screen → Pair with PC", style="Sub.TLabel").pack(pady=(0, 9))
+        ttk.Label(dialog, text=f"{pin[:3]}  {pin[3:]}", style="Title.TLabel").pack(pady=(5, 4))
+        countdown = ttk.Label(dialog, text="", style="Sub.TLabel")
+        countdown.pack()
+        ttk.Label(dialog, text=f"PC address: {local_ip()}:{PORT}", style="Sub.TLabel").pack(pady=(8, 2))
+        ttk.Label(dialog, text=f"Certificate: {App.fingerprint[:8].upper()}", style="Sub.TLabel").pack(pady=(0, 8))
+        try:
+            import qrcode
+            qr = qrcode.make(f"https://{local_ip()}:{PORT}/remote#pin={pin}").resize((165, 165))
+            self._qr_photo = ImageTk.PhotoImage(qr)
+            tk.Label(dialog, image=self._qr_photo, bg="#ffffff").pack(pady=4)
+            ttk.Label(dialog, text="Scan with a phone to use its remote and keyboard", style="Sub.TLabel").pack(pady=4)
+        except Exception as e:
+            log("pairing QR unavailable:", e)
+
+        def tick():
+            if not dialog.winfo_exists():
+                return
+            current, left = App.pairing.current_pin()
+            if current:
+                countdown.configure(text=f"Code expires in {left // 60}:{left % 60:02d}")
+                dialog.after(1000, tick)
+            elif not App.pairing.tokens:
+                countdown.configure(text="Code expired — close this window and create a new one")
+            else:
+                countdown.configure(text="Paired successfully")
+                self.root.after(0, self.refresh)
+
+        tick()
+        ttk.Button(dialog, text="Done", command=dialog.destroy).pack(pady=(8, 14))
+
+    def quit(self):
+        if self.tray_icon:
+            try:
+                self.tray_icon.stop()
+            except Exception:
+                pass
+        sharing_enabled.clear()
+        if App.server:
+            try:
+                App.server.shutdown()
+                App.server.server_close()
+            except Exception:
+                pass
+        self.root.quit()
+        self.root.destroy()
+
+
 def message_box(text, title=APP, flags=0x41):  # MB_OKCANCEL | MB_ICONINFORMATION
     return ctypes.windll.user32.MessageBoxW(None, text, title, flags)
 
 
-def tray():
+def tray(ui=None):
     import pystray
-    from PIL import Image, ImageDraw
+    from PIL import Image
 
-    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle((4, 10, 60, 46), 6, fill=(59, 130, 246, 255))
-    d.rectangle((26, 48, 38, 54), fill=(59, 130, 246, 255))
-    d.rectangle((18, 54, 46, 58), fill=(59, 130, 246, 255))
+    img = Image.open(resource_path("ethanconnect.ico")).convert("RGBA")
+
+    def open_app(icon, item):
+        if ui:
+            ui.root.after(0, ui.show_window)
 
     def pair(icon, item):
-        show_pin_window()
+        if ui:
+            ui.request_pair_dialog()
+        else:
+            show_pin_window()
 
     def toggle_monitor(icon, item):
         settings["monitor"] = "primary" if settings["monitor"] == "auto" else "auto"
+        save_settings()
         _rebuild.set()
 
     def display(icon, item):
@@ -686,13 +1125,16 @@ def tray():
     def forget(icon, item):
         if message_box("Forget every paired TV? They will need a new PIN.") == 1:
             App.pairing.forget_all()
+            if ui:
+                ui.root.after(0, ui.refresh)
 
     def autostart(icon, item):
         set_autostart(not autostart_enabled())
 
     menu = pystray.Menu(
         pystray.MenuItem(f"{APP} {VERSION}", None, enabled=False),
-        pystray.MenuItem("Pair a TV / phone (show PIN)...", pair, default=True),
+        pystray.MenuItem("Open EthanConnect", open_app, default=True),
+        pystray.MenuItem("Pair a TV / phone (show PIN)...", pair),
         pystray.MenuItem("Share primary screen instead of second screen", toggle_monitor,
                          checked=lambda i: settings["monitor"] == "primary"),
         pystray.MenuItem(lambda i: "Remove second screen..." if display_installed() else "Set up second screen...", display),
@@ -711,13 +1153,42 @@ def main():
     if "--remove-display" in sys.argv:
         remove_display()
         return
-    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, f"Global\\{APP}PC")
+    # Use a new singleton name so a click on this update can replace the old tray-only build.
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, f"Global\\{APP}PC_ControlCenter")
     if ctypes.windll.kernel32.GetLastError() == 183:  # already running
+        hwnd = ctypes.windll.user32.FindWindowW(None, f"{APP} Control Center")
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
         return
-    start_server()
-    if not App.pairing.tokens and "--background" not in sys.argv:
-        show_pin_window()
-    tray().run()
+    try:
+        start_server()
+    except Exception as e:
+        log("server start failed:", e)
+        message_box(f"EthanConnect could not start sharing on port {PORT}.\n\n{e}", flags=0x10)
+        return
+    background = "--background" in sys.argv
+    ui = ControlCenter(hidden=background)
+    icon = tray(ui)
+    ui.tray_icon = icon
+    icon.run_detached()
+    if not App.pairing.tokens and not background:
+        ui.root.after(700, ui.show_pair_dialog)
+    try:
+        ui.root.mainloop()
+    finally:
+        sharing_enabled.clear()
+        _rebuild.set()
+        try:
+            icon.stop()
+        except Exception:
+            pass
+        if App.server:
+            try:
+                App.server.shutdown()
+                App.server.server_close()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

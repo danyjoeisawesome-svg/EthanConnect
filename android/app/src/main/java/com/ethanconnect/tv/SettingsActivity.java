@@ -35,6 +35,11 @@ public class SettingsActivity extends AppCompatActivity {
             store.forget();
             refresh();
         });
+        findViewById(R.id.btnWallpaper).setOnClickListener(v ->
+                startActivity(new Intent(this, WallpaperActivity.class)));
+        findViewById(R.id.btnScreensaver).setOnClickListener(v ->
+                startActivity(new Intent(this, WallpaperActivity.class)
+                        .putExtra(WallpaperActivity.EXTRA_SCREENSAVER, true)));
         findViewById(R.id.btnTvSettings).setOnClickListener(v -> openTvSettings());
         findViewById(R.id.btnStockHome).setOnClickListener(v -> openStockHome());
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());

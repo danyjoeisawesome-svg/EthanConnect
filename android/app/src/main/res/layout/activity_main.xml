@@ -3,72 +3,128 @@
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF000000">
+    android:background="@drawable/home_background">
+
+    <ImageView
+        android:id="@+id/homeWallpaper"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:visibility="gone"
+        android:importantForAccessibility="no" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#990B1020"
+        android:importantForAccessibility="no" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:paddingStart="48dp"
+        android:paddingEnd="48dp">
 
-        <!-- Clock at top-left -->
-        <TextView
-            android:id="@+id/clock"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="start"
-            android:layout_marginStart="24dp"
-            android:layout_marginTop="24dp"
-            android:text="00:00"
-            android:textColor="#FFFFFFFF"
-            android:textSize="32sp"
-            android:fontFamily="sans-serif-light" />
-
-        <!-- Top buttons row -->
         <LinearLayout
-            android:id="@+id/topButtons"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="end"
-            android:layout_marginTop="24dp"
-            android:layout_marginEnd="24dp"
+            android:layout_marginTop="34dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/clock"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="00:00"
+                    android:textColor="@color/text_primary"
+                    android:textSize="42sp"
+                    android:fontFamily="sans-serif-light" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/home_tagline"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="15sp"
+                    android:fontFamily="sans-serif" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/topButtons"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btnMirror"
+                    style="@style/TopButton"
+                    android:text="@string/mirror"
+                    android:drawableStart="@drawable/ic_mirror" />
+
+                <TextView
+                    android:id="@+id/btnSettings"
+                    style="@style/TopButton"
+                    android:text="@string/settings"
+                    android:drawableStart="@drawable/ic_settings" />
+
+                <TextView
+                    android:id="@+id/btnInputs"
+                    style="@style/TopButton"
+                    android:text="@string/inputs"
+                    android:drawableStart="@drawable/ic_inputs" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="34dp"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <TextView
-                android:id="@+id/btnMirror"
-                style="@style/TopButton"
-                android:text="@string/mirror"
-                android:drawableStart="@drawable/ic_mirror" />
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/app_library"
+                android:textColor="@color/text_primary"
+                android:textSize="24sp"
+                android:fontFamily="sans-serif-medium" />
+
+            <View
+                android:layout_width="5dp"
+                android:layout_height="5dp"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/accent_dot" />
 
             <TextView
-                android:id="@+id/btnSettings"
-                style="@style/TopButton"
-                android:text="@string/settings"
-                android:drawableStart="@drawable/ic_settings" />
-
-            <TextView
-                android:id="@+id/btnInputs"
-                style="@style/TopButton"
-                android:text="@string/inputs"
-                android:drawableStart="@drawable/ic_inputs" />
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="9dp"
+                android:text="@string/app_library_hint"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
         </LinearLayout>
 
-        <!-- App grid -->
-        <FrameLayout
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/grid"
             android:layout_width="match_parent"
             android:layout_height="0dp"
+            android:layout_marginTop="14dp"
             android:layout_weight="1"
-            android:layout_marginTop="16dp">
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/grid"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:paddingTop="16dp"
-                android:paddingBottom="48dp"
-                android:clipToPadding="false"
-                android:overScrollMode="never"
-                android:scrollbars="none"
-                android:descendantFocusability="afterDescendants" />
-        </FrameLayout>
+            android:clipToPadding="false"
+            android:descendantFocusability="afterDescendants"
+            android:overScrollMode="never"
+            android:paddingTop="8dp"
+            android:paddingBottom="40dp"
+            android:scrollbars="none" />
     </LinearLayout>
 </FrameLayout>

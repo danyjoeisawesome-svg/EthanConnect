@@ -10,6 +10,7 @@
     <!-- Multicast lock: lets the TV receive the PC's discovery broadcast. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <queries>
         <intent>
@@ -57,6 +58,16 @@
             </intent-filter>
         </activity>
 
+        <!-- Some TV firmware starts its own launcher directly at boot, ignoring the selected HOME app. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Second screen: shows the PC display streamed by EthanConnect PC. -->
         <activity
             android:name=".MirrorActivity"
@@ -73,6 +84,26 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:screenOrientation="landscape" />
+
+        <activity
+            android:name=".WallpaperActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape" />
+
+        <service
+            android:name=".EthanDreamService"
+            android:exported="true"
+            android:label="@string/screensaver_name"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.dream"
+                android:resource="@xml/ethan_dream_info" />
+        </service>
 
         <activity
             android:name=".InputActivity"

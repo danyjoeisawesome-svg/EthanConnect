@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#FF000000"
-    android:orientation="vertical"
-    android:padding="24dp">
+    android:fillViewport="true"
+    android:overScrollMode="never">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
 
     <TextView
         android:layout_width="wrap_content"
@@ -42,6 +48,18 @@
         android:text="@string/forget_pc" />
 
     <TextView
+        android:id="@+id/btnWallpaper"
+        style="@style/TopButton"
+        android:layout_marginBottom="16dp"
+        android:text="@string/choose_wallpaper" />
+
+    <TextView
+        android:id="@+id/btnScreensaver"
+        style="@style/TopButton"
+        android:layout_marginBottom="16dp"
+        android:text="@string/choose_screensaver" />
+
+    <TextView
         android:id="@+id/btnTvSettings"
         style="@style/TopButton"
         android:layout_marginBottom="16dp"
@@ -65,4 +83,5 @@
         android:text="@string/privacy_note"
         android:textColor="#80FFFFFF"
         android:textSize="13sp" />
-</LinearLayout>
+    </LinearLayout>
+</ScrollView>

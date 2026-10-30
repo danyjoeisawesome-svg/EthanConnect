@@ -81,16 +81,14 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.ViewHolder> {
         AppEntry entry = items.get(position);
         holder.itemView.setTag(entry);
 
-        if (entry.label != null && !entry.label.isEmpty()) {
-            holder.label.setText(entry.label);
-            holder.label.setVisibility(View.VISIBLE);
-        } else {
-            holder.label.setVisibility(View.GONE);
-        }
+        // Keep app artwork clean; the name below the card is the single title.
+        holder.label.setVisibility(View.GONE);
 
         if (entry.name != null && !entry.name.isEmpty()) {
             holder.name.setText(entry.name);
             holder.name.setVisibility(View.VISIBLE);
+            holder.name.setAlpha(1f);
+            holder.name.setTranslationY(0f);
         } else {
             holder.name.setVisibility(View.GONE);
         }

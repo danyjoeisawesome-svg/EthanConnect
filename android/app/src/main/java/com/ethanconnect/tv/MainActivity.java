@@ -18,6 +18,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -45,6 +46,7 @@ public class MainActivity extends AppCompatActivity implements AppAdapter.TileLi
     private TextView btnMirror;
     private TextView btnSettings;
     private TextView btnInputs;
+    private ImageView homeWallpaper;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Runnable clockRunnable;
@@ -53,6 +55,8 @@ public class MainActivity extends AppCompatActivity implements AppAdapter.TileLi
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        homeWallpaper = findViewById(R.id.homeWallpaper);
+        applyHomeWallpaper();
 
         config = new Config(this, getResources());
 
@@ -123,8 +127,22 @@ public class MainActivity extends AppCompatActivity implements AppAdapter.TileLi
     @Override
     protected void onResume() {
         super.onResume();
+        applyHomeWallpaper();
         loadApps();
         startClock();
+    }
+
+    private void applyHomeWallpaper() {
+        if (homeWallpaper == null) return;
+        String choice = getSharedPreferences("home_appearance", MODE_PRIVATE)
+                .getString("wallpaper", "midnight");
+        int imageId = getResources().getIdentifier("wallpaper_" + choice, "drawable", getPackageName());
+        if (!"midnight".equals(choice) && imageId != 0) {
+            homeWallpaper.setImageResource(imageId);
+            homeWallpaper.setVisibility(View.VISIBLE);
+        } else {
+            homeWallpaper.setVisibility(View.GONE);
+        }
     }
 
     @Override

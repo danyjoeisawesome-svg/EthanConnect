@@ -14,7 +14,7 @@ Use your PC as a wireless **second screen on your Android TV**, control it with 
 
 | Folder | What | Build output |
 |---|---|---|
-| `android/` | TV app + optional launcher (package `com.ethanconnect.tv`) | `app-release.aab` (Play) / `.apk` (sideload) |
+| `android/` | TV app + optional launcher (package `com.ethanconnect.tv`) | `app-release.aab` (Play) / `EthanConnect.apk` (sideload) |
 | `pc/` | Windows tray app: capture, TLS server, pairing, input, virtual display helper | `dist/EthanConnect.exe` |
 | `installer/` | Inno Setup script for a normal Windows installer | `dist/EthanConnect-Setup-1.0.0.exe` |
 | `store/` | Play listing text, data-safety answers, generated graphics | - |
@@ -27,7 +27,22 @@ Use your PC as a wireless **second screen on your Android TV**, control it with 
 3. **Phone:** scan the QR code in the pairing window. The page pairs itself and becomes a touchpad + keyboard (`/remote`). `/view` shows the screen in any browser. Accept the one-time certificate warning - the certificate is created on your PC.
 4. **Real second screen (optional):** tray menu > *Set up second screen*. This installs the signed *usbmmidd* virtual display driver (Windows asks for permission); then set Windows Display to *Extend*. The app streams the virtual monitor automatically.
 
+The EthanConnect PC control center opens when you launch the app. Use **Connect TV** to enable sharing and follow the TV prompt, **Pair a TV** to add a device, or select a paired device and **Disconnect selected TV** to revoke it. Choose 720p, 1080p, 1440p, or 4K and adjust JPEG detail and frame rate in **Stream quality**. On the TV, open **Second Screen** to begin viewing the PC.
+
+EthanConnect is registered as the TV's Home app. On firmware that starts its own launcher directly at boot, the boot receiver retries opening EthanConnect during the first 45 seconds after Android reports boot complete.
+
 TV remote: D-pad = mouse, OK = click, hold OK = right-click, CH+/CH- = scroll, Back = leave, Menu = re-pair.
+
+### Add wallpaper or screensaver images
+
+The same image catalog is used by the home wallpaper picker and the screensaver picker. To add an image:
+
+1. Add a 16:9 landscape JPEG to `android/app/src/main/res/drawable-nodpi/`, named `wallpaper_<id>.jpg` (for example, `wallpaper_aurora.jpg`). Use a lowercase ID with underscores only.
+2. Add a display name to `android/app/src/main/res/values/strings.xml`, such as `<string name="wallpaper_name_aurora">Aurora</string>`.
+3. Add the ID to the `wallpaper_options` list in `android/app/src/main/res/values/wallpapers.xml`, such as `<item>aurora</item>`.
+4. Build the app again. The new image will appear in both **Settings → Choose wallpaper** and **Settings → Choose screensaver**. The screensaver must also be selected in **TV Settings → Device Preferences → Screen saver**.
+
+Keep `midnight` in the catalog; it is the built-in dark background and does not need an image file. Before publishing an update, increase `versionCode` and `versionName` in `android/app/build.gradle`.
 
 ## Security model
 
@@ -48,8 +63,10 @@ cd android
 # PC app (Python 3.9+)
 pip install pyinstaller pystray cryptography pillow mss qrcode
 cd pc
-pyinstaller --noconfirm --clean --onefile --noconsole --name EthanConnect --icon ethanconnect.ico `
-  --version-file version_info.txt --hidden-import web_pages --hidden-import pystray._win32 ethanconnect_pc.py
+pyinstaller --noconfirm --clean --onefile --noconsole --name EthanConnect-1.2.1 --icon ..\pc\ethanconnect.ico `
+  --version-file ..\pc\version_info.txt --add-data "..\pc\ethanconnect.ico;." --hidden-import web_pages `
+  --hidden-import pystray._win32 --distpath dist\release --workpath build_pyi\EthanConnect-1.2.1 `
+  --specpath build_pyi pc\ethanconnect_pc.py
 
 # Installer (Inno Setup 6)
 iscc installer\EthanConnect.iss
@@ -73,7 +90,7 @@ Back the keystore up. Use Play App Signing so Google holds the app signing key a
 
 ## Play Store checklist
 
-- [x] Package id `com.ethanconnect.tv`, versionCode 1 / 1.0.0, targetSdk 34 (Android TV minimum per Play policy - re-check the current requirement before each release)
+- [x] Package id `com.ethanconnect.tv`, versionCode 9 / 1.3.5, targetSdk 34
 - [x] Leanback launcher intent filter, TV banner, `android.software.leanback` required, touchscreen not required
 - [x] Only INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, CHANGE_WIFI_MULTICAST_STATE; cleartext traffic disabled
 - [x] Signed release AAB, minified, no third-party SDKs

@@ -61,13 +61,22 @@ final class PcClient {
 
     static String fingerprint(Certificate cert) throws CertificateException {
         try {
-            byte[] d = MessageDigest.getInstance("SHA-256").digest(cert.getEncoded());
-            StringBuilder sb = new StringBuilder();
-            for (byte b : d) sb.append(String.format("%02x", b));
-            return sb.toString();
+            return toHex(MessageDigest.getInstance("SHA-256").digest(cert.getEncoded()));
         } catch (Exception e) {
             throw new CertificateException(e);
         }
+    }
+
+    /** Stable lowercase hex independent of signed-byte formatting differences between runtimes. */
+    private static String toHex(byte[] bytes) {
+        final char[] digits = "0123456789abcdef".toCharArray();
+        char[] out = new char[bytes.length * 2];
+        for (int i = 0; i < bytes.length; i++) {
+            int value = bytes[i] & 0xff;
+            out[i * 2] = digits[value >>> 4];
+            out[i * 2 + 1] = digits[value & 0x0f];
+        }
+        return new String(out);
     }
 
     private HttpsURLConnection open(String method, String path, int readTimeoutMs) throws IOException {
@@ -88,6 +97,8 @@ final class PcClient {
         try {
             probe.connect();
             fp = fingerprint(probe.getServerCertificates()[0]);
+            android.util.Log.i("EthanConnect", "PC certificate fingerprint=" + fp.substring(0, 16)
+                    + " length=" + fp.length());
         } catch (CertificateException e) {
             throw new IOException(e);
         } finally {
@@ -97,12 +108,16 @@ final class PcClient {
         // certificate we actually saw, so a man in the middle cannot reuse it against the real PC.
         HttpsURLConnection c = new PcClient(host, port, fp).open("POST", "/pair", 8000);
         try {
-            byte[] body = ("{\"proof\":\"" + hmacHex(pin, fp) + "\",\"name\":\"" + tvName.replace("\"", "") + "\"}")
+            String proof = hmacHex(pin, fp);
+            android.util.Log.i("EthanConnect", "pair request host=" + host + ":" + port + " fingerprint="
+                    + fp.substring(0, 16) + " proofLength=" + proof.length());
+            byte[] body = ("{\"proof\":\"" + proof + "\",\"name\":\"" + tvName.replace("\"", "") + "\"}")
                     .getBytes(StandardCharsets.UTF_8);
             c.setDoOutput(true);
             c.setRequestProperty("Content-Type", "application/json");
             try (OutputStream os = c.getOutputStream()) { os.write(body); }
-            if (c.getResponseCode() != 200) throw new Unauthorized();
+            int responseCode = c.getResponseCode();
+            if (responseCode != 200) throw new IOException("PC rejected pairing: HTTP " + responseCode);
             String json = new String(readAll(c.getInputStream()), StandardCharsets.UTF_8);
             int i = json.indexOf("\"token\"");
             int a = json.indexOf('"', json.indexOf(':', i) + 1) + 1;
@@ -120,9 +135,7 @@ final class PcClient {
             for (int i = 0; i < msg.length; i++) {
                 msg[i] = (byte) Integer.parseInt(fingerprintHex.substring(2 * i, 2 * i + 2), 16);
             }
-            StringBuilder sb = new StringBuilder();
-            for (byte b : mac.doFinal(msg)) sb.append(String.format("%02x", b));
-            return sb.toString();
+            return toHex(mac.doFinal(msg));
         } catch (Exception e) {
             throw new IOException(e);
         }

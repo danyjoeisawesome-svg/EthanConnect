@@ -1,7 +1,7 @@
 ; Inno Setup script for EthanConnect PC. Compile with Inno Setup 6:  iscc installer\EthanConnect.iss
 ; Output: dist\EthanConnect-Setup-1.0.0.exe  (build dist\EthanConnect.exe first, see README)
 #define AppName "EthanConnect PC"
-#define AppVersion "1.0.0"
+#define AppVersion "1.2.1"
 
 [Setup]
 AppId={{6E2B6B0E-6C0D-4D0B-9A58-7D3C5B9E0A11}
@@ -25,7 +25,7 @@ Name: "autostart"; Description: "Start EthanConnect when I sign in to Windows"; 
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
-Source: "..\dist\EthanConnect.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\release\EthanConnect-1.2.1.exe"; DestDir: "{app}"; DestName: "EthanConnect.exe"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\EthanConnect"; Filename: "{app}\EthanConnect.exe"

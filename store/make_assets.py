@@ -1,10 +1,11 @@
 """Generates EthanConnect's icon + banner PNGs (Android resources and Play Console store assets).
 Run:  python make_assets.py   (needs Pillow)"""
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ANDROID_RES = os.path.join(HERE, "..", "android", "app", "src", "main", "res")
+LOGO_SOURCE = os.path.join(HERE, "..", "assets", "logo.jfif")
 BLUE, DARK, WHITE = (59, 130, 246), (17, 24, 39), (255, 255, 255)
 
 
@@ -32,12 +33,27 @@ def font(size, bold=True):
 
 
 def icon(size):
-    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    d.rounded_rectangle((0, 0, size - 1, size - 1), size * 0.22, fill=DARK)
-    g = glyph(int(size * 0.8))
-    im.alpha_composite(g, (int(size * 0.1), int(size * 0.1)))
-    return im
+    logo = Image.open(LOGO_SOURCE).convert("RGB")
+    pixels = logo.load()
+    xs, ys = [], []
+    for y in range(logo.height):
+        for x in range(logo.width):
+            if min(pixels[x, y]) < 225:
+                xs.append(x)
+                ys.append(y)
+    if not xs:
+        raise ValueError(f"No logo artwork found in {LOGO_SOURCE}")
+    left, right = min(xs), max(xs) + 1
+    top, bottom = min(ys), max(ys) + 1
+    side = max(right - left, bottom - top)
+    margin = max(8, round(side * 0.045))
+    side += margin * 2
+    cx, cy = (left + right) // 2, (top + bottom) // 2
+    box = (cx - side // 2, cy - side // 2, cx + (side + 1) // 2, cy + (side + 1) // 2)
+    square = Image.new("RGB", (side, side), "white")
+    source = logo.crop((max(0, box[0]), max(0, box[1]), min(logo.width, box[2]), min(logo.height, box[3])))
+    square.paste(source, (max(0, -box[0]), max(0, -box[1])))
+    return ImageOps.fit(square, (size, size), method=Image.Resampling.LANCZOS).convert("RGBA")
 
 
 def banner(w, h):
