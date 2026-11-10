@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release version tag (e.g. v1.2.1)'
+        required: false
+        default: 'v1.2.1'
 
 permissions:
   contents: write
@@ -76,7 +81,7 @@ jobs:
 
   publish-release:
     needs: [build-android, build-windows]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Download Android Artifacts
@@ -99,6 +104,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: EthanConnect ${{ github.event.inputs.tag || github.ref_name }}
           files: release-assets/*
           generate_release_notes: true
           draft: false
