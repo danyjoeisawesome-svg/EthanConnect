@@ -1,0 +1,105 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
+
+      - name: Build Android APK
+        run: |
+          cd android
+          ./gradlew assembleRelease
+
+      - name: Upload Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EthanConnect-Android
+          path: android/app/build/outputs/apk/release/*.apk
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pystray cryptography pillow mss qrcode
+
+      - name: Build Windows Standalone Executable
+        run: |
+          cd pc
+          pyinstaller --noconfirm --clean --onefile --noconsole `
+            --name EthanConnect `
+            --icon ethanconnect.ico `
+            --version-file version_info.txt `
+            --add-data "ethanconnect.ico;." `
+            --hidden-import web_pages `
+            --hidden-import pystray._win32 `
+            --distpath ../dist `
+            --workpath ../build_pyi `
+            ethanconnect_pc.py
+
+      - name: Upload Windows executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EthanConnect-Windows
+          path: dist/EthanConnect.exe
+
+  publish-release:
+    needs: [build-android, build-windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Android Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: EthanConnect-Android
+          path: release-assets
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: EthanConnect-Windows
+          path: release-assets
+
+      - name: Rename APK for clarity
+        run: |
+          cd release-assets
+          mv *.apk EthanConnect.apk || true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
